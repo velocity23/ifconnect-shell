@@ -5,11 +5,6 @@ const rl = readline.createInterface({
     output: process.stdout,
 });
 
-// IFC2.on('IFC2manifest', function (manifest) {
-//     console.log('Manifest Received');
-//     console.log(manifest);
-// });
-
 (async () => {
     console.log('Intializing...');
     await new Promise((res) =>
