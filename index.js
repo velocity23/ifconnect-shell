@@ -5,6 +5,14 @@ const rl = readline.createInterface({
     output: process.stdout,
 });
 
+let manifest = [];
+
+IFC2.on('IFC2manifest', function (m) {
+    manifest = Object.keys(m);
+});
+
+process.on('exit', () => console.log('Goodbye'));
+
 (async () => {
     console.log('Intializing...');
     await new Promise((res) =>
@@ -17,7 +25,6 @@ const rl = readline.createInterface({
     while (true) {
         const input = await new Promise((res) => rl.question('>> ', res));
         if (input === 'exit') {
-            console.log('Goodbye');
             process.exit(0);
         }
         const parts = input.split(' ');
@@ -36,6 +43,15 @@ const rl = readline.createInterface({
                     console.log(res.data);
                 }
             } else {
+                if (parts[0] === 'manifest') {
+                    console.log(
+                        manifest
+                            .filter((x) =>
+                                x.toLowerCase().includes(parts[1].toLowerCase())
+                            )
+                            .join('\n')
+                    );
+                }
             }
         } catch {
             console.log('Error');
