@@ -5,10 +5,15 @@ const rl = readline.createInterface({
     output: process.stdout,
 });
 
-let manifest = [];
+let manifest = {};
 
 IFC2.on('IFC2manifest', function (m) {
-    manifest = Object.keys(m);
+    manifest = Object.keys(m)
+        .sort()
+        .reduce((obj, key) => {
+            obj[key] = m[key];
+            return obj;
+        }, {});
 });
 
 process.on('exit', () => console.log('Goodbye'));
@@ -42,19 +47,51 @@ process.on('exit', () => console.log('Goodbye'));
                     );
                     console.log(res.data);
                 }
-            } else {
+            } else if (parts.length === 2) {
                 if (parts[0] === 'manifest') {
                     console.log(
-                        manifest
+                        Object.keys(manifest)
                             .filter((x) =>
                                 x.toLowerCase().includes(parts[1].toLowerCase())
                             )
                             .join('\n')
                     );
+                    continue;
                 }
+
+                const command = manifest[parts[0]];
+                if (!command) {
+                    console.log('Error: Unknown command');
+                    continue;
+                }
+                let value = parts[1];
+                switch (command.type) {
+                    case 0: // boolean
+                        value = value === 'true' || value === '1';
+                        break;
+                    case 1: // integer
+                        value = parseInt(value);
+                        break;
+                    case 2: // float
+                        value = parseFloat(value);
+                        break;
+                    case 3: // double
+                        value = parseFloat(value);
+                        break;
+                    case 4: // string
+                        break;
+                    case 5: // long
+                        value = parseInt(value);
+                        break;
+                    default:
+                        console.log('Error: Unknown type');
+                        continue;
+                }
+
+                IFC2.set(parts[0], value);
             }
-        } catch {
-            console.log('Error');
+        } catch (e) {
+            console.log(e.stack);
         }
     }
 })();
