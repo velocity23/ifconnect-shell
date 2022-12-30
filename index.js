@@ -40,8 +40,20 @@ process.on('exit', () => console.log('Goodbye'));
         try {
             if (parts.length === 1) {
                 if (parts[0].startsWith('commands/')) {
+                    const command = manifest[parts[0]];
+                    if (!command) {
+                        console.log('Error: Unknown command');
+                        continue;
+                    }
+
                     IFC2.run(parts[0]);
                 } else {
+                    const command = manifest[parts[0]];
+                    if (!command) {
+                        console.log('Error: Unknown command');
+                        continue;
+                    }
+
                     const res = await new Promise((res) =>
                         IFC2.get(parts[0], res)
                     );
@@ -83,12 +95,54 @@ process.on('exit', () => console.log('Goodbye'));
                     case 5: // long
                         value = parseInt(value);
                         break;
+                    case -1: // command
+                        const [name, val] = value.split(':');
+                        if (name === undefined || val === undefined) {
+                            if (!value) {
+                                console.log('Error: Invalid argument');
+                                continue;
+                            }
+
+                            IFC2.run(parts[0], [{ name: 'x', value }]);
+                            continue;
+                        }
+
+                        IFC2.run(parts[0], [{ name, value: val }]);
+                        continue;
                     default:
                         console.log('Error: Unknown type');
                         continue;
                 }
 
                 IFC2.set(parts[0], value);
+            } else {
+                const command = manifest[parts[0]];
+                if (!command) {
+                    console.log('Error: Unknown command');
+                    continue;
+                }
+                if (command.type !== -1) {
+                    console.log('Error: Command does not accept arguments');
+                    continue;
+                }
+
+                const args = parts
+                    .slice(1)
+                    .map((x, i) => {
+                        const [name, value] = x.split(':');
+                        if (name === undefined || value === undefined) {
+                            if (!x) {
+                                console.log('Error: Invalid argument');
+                                return undefined;
+                            }
+
+                            return { name: `x${i}`, value: x };
+                        }
+                        return { name, value };
+                    })
+                    .filter((x) => x !== undefined);
+
+                IFC2.run(parts[0], args);
             }
         } catch (e) {
             console.log(e.stack);
