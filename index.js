@@ -1,4 +1,4 @@
-const IFC2 = require('ifc2');
+const IFC2 = require('./ifc2');
 const readline = require('readline');
 const rl = readline.createInterface({
     input: process.stdin,
