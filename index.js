@@ -47,6 +47,17 @@ process.on('exit', () => console.log('Goodbye'));
                     }
 
                     IFC2.run(parts[0]);
+                } else if (parts[0].toLowerCase() == 'reconnect') {
+                    await new Promise((res) => IFC2.close(res));
+                    console.log('Old Connection Closed');
+                    await new Promise((res) =>
+                        IFC2.init(res, {
+                            callback: true,
+                        })
+                    );
+                    console.log('New Connection Established');
+                    console.log('Ready');
+                    console.log('');
                 } else {
                     const command = manifest[parts[0]];
                     if (!command) {
