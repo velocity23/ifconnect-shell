@@ -58,6 +58,19 @@ process.on('exit', () => console.log('Goodbye'));
                     console.log('New Connection Established');
                     console.log('Ready');
                     console.log('');
+                } else if (parts[0].toLowerCase() == 'help') {
+                    console.log('help: Show this help message');
+                    console.log('exit: Exit the program');
+                    console.log('reconnect: Reconnect to Infinite Flight');
+                    console.log(
+                        'manifest [search]: Search the state and command manifest'
+                    );
+                    console.log('[state]: Get the value of a state');
+                    console.log('[state] [value]: Set the value of a state');
+                    console.log(
+                        '[command] [...args]: Run a command with or without arguments'
+                    );
+                    continue;
                 } else {
                     const command = manifest[parts[0]];
                     if (!command) {
