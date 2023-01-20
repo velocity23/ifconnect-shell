@@ -810,7 +810,7 @@ let IFC2 = {
                             case IFC2.INTEGER:
                                 IFC2.processResult(
                                     command,
-                                    data.readUInt32LE(8)
+                                    data.readInt32LE(8)
                                 );
                                 break;
                             case IFC2.FLOAT:
