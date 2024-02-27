@@ -22,25 +22,23 @@ limitations under the License.
 
 */
 
-/*****
+/** ***
  * Import required modules
  */
 const dgram = require('dgram'); // For listening for UDP broadcasts
 const net = require('net'); // For establishing socket connections
 const events = require('events'); // For emitting events back to calling scripts
-const { SlowBuffer } = require('buffer');
-require('stringview'); // DataView extensions for reading/writing strings
 
-/****
+/** **
  * Define IFC2 object
  */
-let IFC2 = {
-    /*****
+const IFC2 = {
+    /** ***
      * Module name
      */
     name: 'IFC2', // Module name
 
-    /*****
+    /** ***
      * Constants for referencing error levels in logging
      */
     INFO: 3,
@@ -48,7 +46,7 @@ let IFC2 = {
     ERROR: 1,
     MANDATORY: 0,
 
-    /*****
+    /** ***
      * Constants for sending the correct flag for get/set calls in v2 API
      */
     GETCMD: 0,
@@ -56,12 +54,12 @@ let IFC2 = {
     RUNCMD: -1,
     LE: true,
 
-    /*****
+    /** ***
      * Constant for the manifest command
      */
     MANIFESTCMD: -1,
 
-    /*****
+    /** ***
      * Constants for IF Connect v2 data types
      */
     BOOLEAN: 0,
@@ -71,7 +69,7 @@ let IFC2 = {
     STRING: 4,
     LONG: 5,
 
-    /*****
+    /** ***
      * Object to hold connection data, manifest data, socket objects and more
      */
     infiniteFlight: {
@@ -90,20 +88,20 @@ let IFC2 = {
         manifestBuffer: null, // Placeholder variable for future manifest buffer
     },
 
-    /*****
+    /** ***
      * Default logging state
      */
     enableLog: false, // Control logging -- default is false
-    logLevel: this.MANDATORY, // Logging message level -- default is MANDATORY
+    logLevel: 0, // Logging message level -- default is MANDATORY
 
-    /*****
+    /** ***
      * Default keepalive, reconnect and timeout
      */
     keepAlive: false, // By default we don't keep alive
     doReconnect: true, // By default we reconnect when sockets error
     timeout: 0, // By default we don't time out the sockets (except the manifest)
 
-    /*****
+    /** ***
      * State tracking: are we connected? are we waiting?
      */
     isConnected: false, // Are we connected to IF?
@@ -111,7 +109,7 @@ let IFC2 = {
     isPollWaiting: false, // Are we waiting for a poll result?,
     isCallback: false, // Are we using callbacks?
 
-    /*****
+    /** ***
      * Command queues
      */
     q: [], // Queue for processing one-off requests
@@ -120,12 +118,12 @@ let IFC2 = {
     pollWaiting: 0, // Place holder for poll command currently pending data from IF
     callbacks: {}, // Holds callback functions for when callbacks are enabled
 
-    /*****
+    /** ***
      * Timeout placeholder for slow polling handler
      */
     pollTimeout: null,
 
-    /*****
+    /** ***
      *
      * Queue buffers
      *
@@ -134,77 +132,72 @@ let IFC2 = {
     qBuffer: null,
     pollBuffer: null,
 
-    /*****
+    /** ***
      * List to keep track of the commands pending responses from IF
      */
     waitList: [],
 
-    /*****
+    /** ***
      * Event emitter for return events to client
      */
     eventEmitter: new events.EventEmitter(),
 
-    /*****
+    /** ***
      * Default empty infoCallback function
      */
 
     infoCallback: () => {},
 
-    /*****
+    /** ***
      * Default polling throttle (0ms)
      */
 
     pollThrottle: 0,
 
-    /*****
+    /** ***
      * Object to hold last value fetched for all states that have been fetched from API
      */
     ifData: {},
 
-    /*****
+    /** ***
      * Logging function
      */
     log: (msg, level = IFC2.logLevel) => {
         // generic logging function
         if (IFC2.enableLog) {
             if (level <= IFC2.logLevel) {
-                let info = '(';
-                info += IFC2.isConnected ? 'c' : '';
-                info += IFC2.isWaiting ? 'w' : '';
-                info += IFC2.q.length;
-                info += IFC2.pollQ.length;
-                info += ')';
+                console.log(msg);
             }
         }
     },
 
-    /*****
+    /** ***
      * Function to allow client to define listener for events emitted by module
      */
     on: (event, listener) => {
-        IFC2.log('Setting listener for: ' + event);
+        IFC2.log(`Setting listener for: ${event}`);
         IFC2.eventEmitter.on(event, listener);
     },
 
-    /*****
+    /** ***
      * Returns command formatted to send on TCP socket to API for getState commands
      */
     getCommand: (cmd, args) => {
         // Prepare command ready to send to IF
 
-        IFC2.log('getCommand: ' + cmd);
+        IFC2.log(`getCommand: ${cmd}`);
 
         let argsLength = 0;
         if (args) {
             argsLength = 4;
             for (let i = 0; i < args.length; i++) {
-                let arg = args[i];
+                const arg = args[i];
                 argsLength += 4 + arg.name.length + 4 + arg.value.length;
             }
         }
 
-        let abCommand = new ArrayBuffer(5 + argsLength);
-        let dvCommand = new DataView(abCommand);
+        const abCommand = new ArrayBuffer(5 + argsLength);
+        const dvCommand = new DataView(abCommand);
         dvCommand.setInt32(0, cmd, IFC2.LE); // Encode the command itself
         dvCommand.setInt8(4, args ? IFC2.SETCMD : IFC2.GETCMD, IFC2.LE); // Encode get marker
         if (args) {
@@ -212,7 +205,7 @@ let IFC2 = {
             dvCommand.setInt32(offset, args.length, IFC2.LE); // Encode number of arguments
             offset += 4;
             for (let i = 0; i < args.length; i++) {
-                let arg = args[i];
+                const arg = args[i];
                 dvCommand.setInt32(offset, arg.name.length, IFC2.LE); // Encode length of argument name
                 offset += 4;
                 for (let j = 0; j < arg.name.length; j++) {
@@ -227,22 +220,22 @@ let IFC2 = {
                 }
             }
         }
-        let u8Command = new Uint8Array(abCommand);
+        const u8Command = new Uint8Array(abCommand);
 
-        IFC2.log('getCommand: ' + u8Command);
+        IFC2.log(`getCommand: ${u8Command}`);
 
         return u8Command;
     },
 
-    /*****
+    /** ***
      * Sends command formatted to send on TCP socket to API for setState commands
      */
     setCommand: (cmd, val) => {
         // Prepare command ready to send to IF
 
-        IFC2.log('setCommand: ' + cmd + ',' + val, IFC2.MANDATORY);
+        IFC2.log(`setCommand: ${cmd},${val}`, IFC2.MANDATORY);
 
-        let cmdType = IFC2.infiniteFlight.manifestByCommand[cmd].type;
+        const cmdType = IFC2.infiniteFlight.manifestByCommand[cmd].type;
 
         let dataLength = 1;
 
@@ -262,10 +255,12 @@ let IFC2 = {
             case IFC2.LONG:
                 dataLength = 8;
                 break;
+            default:
+                return;
         }
 
-        let abCommand = new ArrayBuffer(5 + dataLength); // 5 is command + true/false divider + value to be sent
-        let dvCommand = new DataView(abCommand);
+        const abCommand = new ArrayBuffer(5 + dataLength); // 5 is command + true/false divider + value to be sent
+        const dvCommand = new DataView(abCommand);
         dvCommand.setInt32(0, cmd, IFC2.LE); // Encode the command itself
         dvCommand.setInt8(4, IFC2.SETCMD, IFC2.LE); // Encode set marker
 
@@ -289,65 +284,68 @@ let IFC2 = {
             case IFC2.LONG:
                 dvCommand.setBigInt64(5, val, true);
                 break;
+            default:
+                return;
         }
 
-        let u8Command = new Uint8Array(abCommand);
+        const u8Command = new Uint8Array(abCommand);
 
-        IFC2.log('setCommand u8Command: ' + u8Command, IFC2.MANDATORY);
+        IFC2.log(`setCommand u8Command: ${u8Command}`, IFC2.MANDATORY);
 
         IFC2.log(dvCommand, IFC2.MANDATORY);
 
         return u8Command;
     },
 
-    /*****
+    /** ***
      * Process next command in one-off command queue (if any commands are pending)
      */
     processQueue: () => {
-        IFC2.log('processQueue: isConnected: ' + IFC2.isConnected);
-        IFC2.log('processQueue: isWaiting: ' + IFC2.isWaiting);
+        IFC2.log(`processQueue: isConnected: ${IFC2.isConnected}`);
+        IFC2.log(`processQueue: isWaiting: ${IFC2.isWaiting}`);
 
         if (IFC2.isConnected && !IFC2.isWaiting) {
             // only send if connected and not already waiting for a response
 
-            IFC2.log('Q length: ' + IFC2.q.length);
+            IFC2.log(`Q length: ${IFC2.q.length}`);
 
             if (IFC2.q.length > 0) {
                 // only send if there is a command in the queue
 
-                let cmdObj = IFC2.q.shift(); // grab the next command from the queue
+                const cmdObj = IFC2.q.shift(); // grab the next command from the queue
 
                 if (IFC2.infiniteFlight.manifestByName[cmdObj.cmd]) {
                     // only send if the command is in the manifest
 
                     IFC2.isWaiting = true; // indicate we are now waiting for a response
 
-                    IFC2.log('Sending command: ' + cmdObj.cmdCode);
+                    IFC2.log(`Sending command: ${cmdObj.cmdCode}`);
 
                     IFC2.infiniteFlight.clientSocket.write(
                         cmdObj.cmdBuf,
                         () => {
                             // Send the command
                             IFC2.waitList.push(cmdObj.cmdCode); // Add the command to the wait list
-                            IFC2.log('Command sent: ' + cmdObj.cmdCode);
+                            IFC2.log(`Command sent: ${cmdObj.cmdCode}`);
                         }
                     );
                 }
             } else {
+                // eslint-disable-next-line @typescript-eslint/no-implied-eval
                 setTimeout(IFC2.processQueue, 250); // No command in queue -- try again in 250ms
             }
         }
     },
 
-    /****
+    /** **
      * Add a one-off command to the command queue
      */
     enqueueCommand: (cmd, action = IFC2.GETCMD, val) => {
-        IFC2.log('Enqueueing: ' + cmd + ',' + action);
+        IFC2.log(`Enqueueing: ${cmd},${action}`);
 
-        let cmdCode = IFC2.infiniteFlight.manifestByName[cmd].command; // Get the command code
+        const cmdCode = IFC2.infiniteFlight.manifestByName[cmd].command; // Get the command code
 
-        let cmdBuf =
+        const cmdBuf =
             action == IFC2.GETCMD
                 ? IFC2.getCommand(cmdCode)
                 : action == IFC2.RUNCMD
@@ -355,7 +353,7 @@ let IFC2 = {
                 : IFC2.setCommand(cmdCode, val);
 
         if (action == IFC2.GETCMD) {
-            IFC2.q.push({ cmd: cmd, cmdCode: cmdCode, cmdBuf: cmdBuf }); // Push the command into the queue
+            IFC2.q.push({ cmd, cmdCode, cmdBuf }); // Push the command into the queue
             IFC2.log(IFC2.q);
             if (IFC2.q.length > 0 && !IFC2.isWaiting) {
                 IFC2.processQueue();
@@ -363,21 +361,21 @@ let IFC2 = {
         } else if (action == IFC2.SETCMD) {
             IFC2.infiniteFlight.clientSocket.write(cmdBuf, () => {
                 // Send the command
-                IFC2.log('SetState Command sent: ' + cmdBuf);
+                IFC2.log(`SetState Command sent: ${cmdBuf}`);
             });
         } else if (action == IFC2.RUNCMD) {
             IFC2.infiniteFlight.clientSocket.write(cmdBuf, () => {
                 // Send the command
-                IFC2.log('Run Command sent: ' + cmdBuf);
+                IFC2.log(`Run Command sent: ${cmdBuf}`);
             });
         }
     },
 
-    /*****
+    /** ***
      * Function for client to request a one-off get command
      */
     get: (cmd, callback) => {
-        IFC2.log('Processing get request: ' + cmd);
+        IFC2.log(`Processing get request: ${cmd}`);
 
         if (IFC2.isConnected) {
             // Only enqueue if connected
@@ -391,11 +389,11 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Function for client to request a one-off get command
      */
     set: (cmd, val) => {
-        IFC2.log('Processing set request: ' + cmd + ',' + val);
+        IFC2.log(`Processing set request: ${cmd},${val}`);
 
         if (IFC2.isConnected) {
             // Only enqueue if connected
@@ -403,11 +401,11 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Function run an Infinite Flight command
      */
     run: (cmd, args) => {
-        IFC2.log('Processing run request: ' + cmd);
+        IFC2.log(`Processing run request: ${cmd}`);
 
         if (IFC2.isConnected) {
             // Only enqueue if connected
@@ -415,34 +413,34 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Process the manifest after fetching it
      */
     processManifest: () => {
         IFC2.log('Processing manifest into objects');
 
-        let manifestLines = IFC2.infiniteFlight.manifestData.split('\n'); // Split the data into lines
+        const manifestLines = IFC2.infiniteFlight.manifestData.split('\n'); // Split the data into lines
 
-        for (key in manifestLines) {
+        for (const key in manifestLines) {
             // Loop through the lines
 
-            let line = manifestLines[key];
+            const line = manifestLines[key];
 
-            let lineData = line.split(','); // Split the line at commas
+            const lineData = line.split(','); // Split the line at commas
 
-            let command = parseInt(lineData[0]); // Get the command
-            let type = parseInt(lineData[1]); // Get the command data type
-            let name = lineData[2]; // Get the command name
+            const command = parseInt(lineData[0]); // Get the command
+            const type = parseInt(lineData[1]); // Get the command data type
+            const name = lineData[2]; // Get the command name
 
-            if (!isNaN(command)) {
+            if (!Number.isNaN(command)) {
                 // Save the manifest data for this command
                 IFC2.infiniteFlight.manifestByCommand[command] = {
-                    name: name,
-                    type: type,
+                    name,
+                    type,
                 };
                 IFC2.infiniteFlight.manifestByName[name] = {
-                    command: command,
-                    type: type,
+                    command,
+                    type,
                 };
             }
         }
@@ -457,25 +455,25 @@ let IFC2 = {
         IFC2.postManifest();
     },
 
-    /*****
+    /** ***
      * Return the manifest by name
      */
     manifestByName: () => {
         return IFC2.infiniteFlight.manifestByName;
     },
 
-    /*****
+    /** ***
      * Return the manifest by command
      */
     manifestByCommand: () => {
         return IFC2.infiniteFlight.manifestByCommand;
     },
 
-    /*****
+    /** ***
      * Get the manifest
      */
     getManifest: () => {
-        IFC2.log('Getting manifest from: ' + IFC2.infiniteFlight.serverAddress);
+        IFC2.log(`Getting manifest from: ${IFC2.infiniteFlight.serverAddress}`);
 
         // Reset manifest data variables
         IFC2.infiniteFlight.manifestData = '';
@@ -499,12 +497,12 @@ let IFC2 = {
                 // We already have buffer data
 
                 // Concat the new buffer data into the main manifest buffer
-                let bufArr = [IFC2.infiniteFlight.manifestBuffer, data];
+                const bufArr = [IFC2.infiniteFlight.manifestBuffer, data];
                 IFC2.infiniteFlight.manifestBuffer = Buffer.concat(bufArr);
             }
 
             IFC2.log(
-                'Buffer length: ' + IFC2.infiniteFlight.manifestBuffer.length
+                `Buffer length: ${IFC2.infiniteFlight.manifestBuffer.length}`
             );
 
             if (
@@ -522,27 +520,23 @@ let IFC2 = {
                     IFC2.infiniteFlight.manifestBuffer.readInt32LE(8);
 
                 IFC2.log(
-                    'Manifest length: ' + IFC2.infiniteFlight.manifestLength
+                    `Manifest length: ${IFC2.infiniteFlight.manifestLength}`
                 );
-            } else {
-                // Check if we have hit the manifest length -- and remember the manifest length will be 12 less than the buffer length because
-                // the first 12 bytes are not part of the manifest itself
-                if (
-                    IFC2.infiniteFlight.manifestBuffer.length >=
-                    IFC2.infiniteFlight.manifestLength + 12
-                ) {
-                    // Convert buffer to a string
-                    IFC2.infiniteFlight.manifestData =
-                        IFC2.infiniteFlight.manifestBuffer.toString('utf8', 12);
+            } else if (
+                IFC2.infiniteFlight.manifestBuffer.length >=
+                IFC2.infiniteFlight.manifestLength + 12
+            ) {
+                // Convert buffer to a string
+                IFC2.infiniteFlight.manifestData =
+                    IFC2.infiniteFlight.manifestBuffer.toString('utf8', 12);
 
-                    IFC2.log(IFC2.infiniteFlight.manifestData);
+                IFC2.log(IFC2.infiniteFlight.manifestData);
 
-                    // Close the manifest socket
-                    IFC2.infiniteFlight.manifestSocket.destroy();
+                // Close the manifest socket
+                IFC2.infiniteFlight.manifestSocket.destroy();
 
-                    // Process the manifest
-                    IFC2.processManifest();
-                }
+                // Process the manifest
+                IFC2.processManifest();
             }
 
             IFC2.log('-----');
@@ -577,7 +571,7 @@ let IFC2 = {
         //    });
 
         IFC2.infiniteFlight.manifestSocket.on('error', function (data) {
-            IFC2.log('Error: ' + data, IFC2.INFO);
+            IFC2.log(`Error: ${data}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'error',
                 code: 'error',
@@ -587,7 +581,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.manifestSocket.on('drain', function (data) {
-            IFC2.log('Drain: ' + data, IFC2.INFO);
+            IFC2.log(`Drain: ${data}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'drain',
@@ -597,7 +591,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.manifestSocket.on('end', function (data) {
-            IFC2.log('End: ' + data, IFC2.WARN);
+            IFC2.log(`End: ${data}`, IFC2.WARN);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'end',
@@ -607,7 +601,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.manifestSocket.on('lookup', function (data) {
-            IFC2.log('Lookup: ' + data, IFC2.INFO);
+            IFC2.log(`Lookup: ${data}`, IFC2.INFO);
         });
 
         IFC2.infiniteFlight.manifestSocket.connect(
@@ -632,12 +626,12 @@ let IFC2 = {
         );
     },
 
-    /*****
+    /** ***
      * Place holder to hold success callback function provided by client
      */
     successCallback: () => {},
 
-    /*****
+    /** ***
      * Process the poll queue
      */
     processPoll: () => {
@@ -649,10 +643,10 @@ let IFC2 = {
             IFC2.log(IFC2.pollQ);
 
             // Get current command to process
-            let cmd = IFC2.pollQ[IFC2.pollCurrent];
-            let cmdCode = IFC2.infiniteFlight.manifestByName[cmd].command; // Get the command code
+            const cmd = IFC2.pollQ[IFC2.pollCurrent];
+            const cmdCode = IFC2.infiniteFlight.manifestByName[cmd].command; // Get the command code
 
-            IFC2.log('Polling command: ' + cmdCode);
+            IFC2.log(`Polling command: ${cmdCode}`);
 
             // Prep for next poll
             IFC2.pollCurrent =
@@ -670,7 +664,7 @@ let IFC2 = {
                     IFC2.infiniteFlight.pollSocket.write(
                         IFC2.getCommand(cmdCode),
                         () => {
-                            IFC2.log('Poll command sent: ' + cmdCode);
+                            IFC2.log(`Poll command sent: ${cmdCode}`);
                             if (IFC2.waitList.indexOf(cmdCode) < 0) {
                                 // Check if we are already waiting for this command
 
@@ -681,23 +675,19 @@ let IFC2 = {
                         }
                     );
                 }, IFC2.pollThrottle);
-            } else {
-                // Don't delay -- just get on and poll
+            } else if (IFC2.waitList.indexOf(cmdCode) < 0) {
+                // Check if we are already waiting for this command
 
-                if (IFC2.waitList.indexOf(cmdCode) < 0) {
-                    // Check if we are already waiting for this command
+                IFC2.infiniteFlight.pollSocket.write(
+                    IFC2.getCommand(cmdCode),
+                    () => {
+                        IFC2.log(`Poll command sent: ${cmdCode}`);
 
-                    IFC2.infiniteFlight.pollSocket.write(
-                        IFC2.getCommand(cmdCode),
-                        () => {
-                            IFC2.log('Poll command sent: ' + cmdCode);
+                        IFC2.waitList.push(cmdCode); // Add the command to the wait list
 
-                            IFC2.waitList.push(cmdCode); // Add the command to the wait list
-
-                            IFC2.pollWaiting = cmdCode;
-                        }
-                    );
-                }
+                        IFC2.pollWaiting = cmdCode;
+                    }
+                );
             }
         } else {
             // There was nothing in the queue
@@ -706,7 +696,7 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Register a command into the poll queue
      */
     pollRegister: (cmd, callback) => {
@@ -723,11 +713,11 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Deregister a command from the poll queue
      */
     pollDeregister: (cmd) => {
-        let index = IFC2.pollQ.indexOf(cmd);
+        const index = IFC2.pollQ.indexOf(cmd);
         IFC2.pollQ.splice(index, 1);
 
         if (IFC2.pollCurrent >= IFC2.pollQ.length) {
@@ -739,45 +729,45 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Process command data returned by the API
      *
      * nextFN is a function to call after data processing is done
      */
     processData: (source, nextFN) => {
-        IFC2.log('processData: Processing data source: ' + source, IFC2.INFO);
+        IFC2.log(`processData: Processing data source: ${source}`, IFC2.INFO);
 
-        let data = source == 'client' ? IFC2.qBuffer : IFC2.pollBuffer;
+        const data = source == 'client' ? IFC2.qBuffer : IFC2.pollBuffer;
 
-        let command = data.readInt32LE(0); // Get the command from the data
+        const command = data.readInt32LE(0); // Get the command from the data
 
-        IFC2.log('processData: Got data for command: ' + command);
-        let inManifest =
+        IFC2.log(`processData: Got data for command: ${command}`);
+        const inManifest =
             IFC2.infiniteFlight.manifestByCommand.hasOwnProperty(command); // See if command is in manifest
 
-        IFC2.log('processData: inManifest: ' + inManifest);
+        IFC2.log(`processData: inManifest: ${inManifest}`);
 
         if (inManifest) {
             // Only proceed if we have the command in the manifest
 
-            let waitIndex = IFC2.waitList.indexOf(command); // See if the command is in the waitList
+            const waitIndex = IFC2.waitList.indexOf(command); // See if the command is in the waitList
 
-            IFC2.log('processData: waitList: ' + JSON.stringify(IFC2.waitList));
-            IFC2.log('processData: In waitList: ' + waitIndex);
+            IFC2.log(`processData: waitList: ${JSON.stringify(IFC2.waitList)}`);
+            IFC2.log(`processData: In waitList: ${waitIndex}`);
 
             if (waitIndex >= 0) {
                 // Only proceed if command is in the waitList
 
-                IFC2.log('processData: Waiting for command: ' + command);
+                IFC2.log(`processData: Waiting for command: ${command}`);
 
-                IFC2.log('processData: data length: ' + data.length);
+                IFC2.log(`processData: data length: ${data.length}`);
 
                 if (data.length > 4) {
                     // See if we have a data length greater than 4
 
                     IFC2.log('processData: data length gt 4');
 
-                    let bufLength = data.readInt32LE(4);
+                    const bufLength = data.readInt32LE(4);
 
                     if (data.length >= bufLength + 8) {
                         // Do we have the full command data?
@@ -787,24 +777,27 @@ let IFC2 = {
                         IFC2.log(data);
 
                         IFC2.log(
-                            'processData: waitList before splice: ' +
-                                JSON.stringify(IFC2.waitList)
+                            `processData: waitList before splice: ${JSON.stringify(
+                                IFC2.waitList
+                            )}`
                         );
 
                         IFC2.waitList.splice(waitIndex, 1);
 
                         IFC2.log(
-                            'processData: waitList after  splice: ' +
-                                JSON.stringify(IFC2.waitList)
+                            `processData: waitList after  splice: ${JSON.stringify(
+                                IFC2.waitList
+                            )}`
                         );
 
+                        let strLen;
                         switch (
                             IFC2.infiniteFlight.manifestByCommand[command].type
                         ) {
                             case IFC2.BOOLEAN:
                                 IFC2.processResult(
                                     command,
-                                    data.readUInt8(8) == 1 ? true : false
+                                    data.readUInt8(8) == 1
                                 );
                                 break;
                             case IFC2.INTEGER:
@@ -838,6 +831,8 @@ let IFC2 = {
                                     data.readBigInt64LE(8)
                                 );
                                 break;
+                            default:
+                                return;
                         }
 
                         // remove data from buffer
@@ -854,16 +849,14 @@ let IFC2 = {
                                     IFC2.isWaiting = false; // No longer waiting
                                 }
                             }
+                        } else if (data.length > bufLength + 8) {
+                            IFC2.pollBuffer = IFC2.pollBuffer.slice(
+                                bufLength + 8,
+                                IFC2.pollBuffer.length
+                            );
                         } else {
-                            if (data.length > bufLength + 8) {
-                                IFC2.pollBuffer = IFC2.pollBuffer.slice(
-                                    bufLength + 8,
-                                    IFC2.pollBuffer.length
-                                );
-                            } else {
-                                IFC2.pollBuffer = null;
-                                IFC2.isPollWaiting = false; // No longer waiting
-                            }
+                            IFC2.pollBuffer = null;
+                            IFC2.isPollWaiting = false; // No longer waiting
                         }
 
                         nextFN();
@@ -881,10 +874,10 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * After processing the manifest, connect to IF Connect v2 API
      */
-    postManifest: function () {
+    postManifest() {
         IFC2.infiniteFlight.clientSocket.connect(
             IFC2.infiniteFlight.serverPort,
             IFC2.infiniteFlight.serverAddress,
@@ -895,7 +888,7 @@ let IFC2 = {
         );
 
         IFC2.infiniteFlight.clientSocket.on('data', function (data) {
-            IFC2.log('***** Received: ' + data, IFC2.INFO);
+            IFC2.log(`***** Received: ${data}`, IFC2.INFO);
 
             if (IFC2.qBuffer == null) {
                 // We haven't stored any buffer data yet
@@ -906,7 +899,7 @@ let IFC2 = {
                 // We already have buffer data
 
                 // Concat the new buffer data into the main manifest buffer
-                let bufArr = [IFC2.qBuffer, data];
+                const bufArr = [IFC2.qBuffer, data];
                 IFC2.qBuffer = Buffer.concat(bufArr);
             }
 
@@ -914,7 +907,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.clientSocket.on('error', function (data) {
-            IFC2.log('Client: Error: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Client: Error: ${JSON.stringify(data)}`, IFC2.INFO);
 
             if (IFC2.isConnected && IFC2.doReconnect) {
                 IFC2.log('Client: Trying to reconnect');
@@ -955,7 +948,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.clientSocket.on('timeout', function (data) {
-            IFC2.log('Client: Timeout: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Client: Timeout: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'error',
                 code: 'timeout',
@@ -965,7 +958,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.clientSocket.on('close', function (data) {
-            IFC2.log('Client: Closer: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Client: Closer: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'close',
@@ -976,7 +969,7 @@ let IFC2 = {
 
         IFC2.infiniteFlight.clientSocket.on('connect', function (data) {
             IFC2.log(
-                'Connected to IF server ' + IFC2.infiniteFlight.serverAddress,
+                `Connected to IF server ${IFC2.infiniteFlight.serverAddress}`,
                 IFC2.MANDATORY
             );
 
@@ -985,7 +978,7 @@ let IFC2 = {
           IFC2.infiniteFlight.clientSocket.setTimeout(IFC2.timeout);
           IFC2.infiniteFlight.clientSocket.setKeepAlive(IFC2.keepAlive);
         });
-      }*/
+      } */
 
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
@@ -999,7 +992,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.clientSocket.on('drain', function (data) {
-            IFC2.log('Client: Drain: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Client: Drain: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'drain',
@@ -1009,7 +1002,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.clientSocket.on('end', function (data) {
-            IFC2.log('Client: End: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Client: End: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'end',
@@ -1019,22 +1012,22 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.clientSocket.on('lookup', function (data) {
-            IFC2.log('Client: Lookup: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Client: Lookup: ${JSON.stringify(data)}`, IFC2.INFO);
         });
     },
 
-    /*****
+    /** ***
      * Pre-connection tasts
      */
-    preConnect: function () {
+    preConnect() {
         IFC2.log('Connecting...', IFC2.INFO);
         IFC2.getManifest();
     },
 
-    /*****
+    /** ***
      * Post-connection tasks
      */
-    postConnect: function () {
+    postConnect() {
         IFC2.log('clientSocket Connected ...', IFC2.MANDATORY);
 
         // Connect to Polling Socket
@@ -1048,7 +1041,7 @@ let IFC2 = {
         );
 
         IFC2.infiniteFlight.pollSocket.on('data', function (data) {
-            IFC2.log('Received poll: ' + data, IFC2.INFO);
+            IFC2.log(`Received poll: ${data}`, IFC2.INFO);
 
             if (IFC2.pollBuffer == null) {
                 // We haven't stored any buffer data yet
@@ -1059,7 +1052,7 @@ let IFC2 = {
                 // We already have buffer data
 
                 // Concat the new buffer data into the main manifest buffer
-                let bufArr = [IFC2.pollBuffer, data];
+                const bufArr = [IFC2.pollBuffer, data];
                 IFC2.pollBuffer = Buffer.concat(bufArr);
             }
 
@@ -1070,7 +1063,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.pollSocket.on('error', function (data) {
-            IFC2.log('Poll: Error: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Poll: Error: ${JSON.stringify(data)}`, IFC2.INFO);
 
             if (IFC2.isConnected && IFC2.doReconnect) {
                 IFC2.log('Poll: Trying to reconnect');
@@ -1111,7 +1104,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.pollSocket.on('timeout', function (data) {
-            IFC2.log('Poll: Timeout: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Poll: Timeout: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'error',
                 code: 'timeout',
@@ -1122,7 +1115,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.pollSocket.on('close', function (data) {
-            IFC2.log('Poll: Close: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Poll: Close: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'close',
@@ -1133,8 +1126,7 @@ let IFC2 = {
 
         IFC2.infiniteFlight.pollSocket.on('connect', function (data) {
             IFC2.log(
-                'Connected for polling to IF server ' +
-                    IFC2.infiniteFlight.serverAddress,
+                `Connected for polling to IF server ${IFC2.infiniteFlight.serverAddress}`,
                 IFC2.MANDATORY
             );
             IFC2.eventEmitter.emit('IFC2msg', {
@@ -1168,7 +1160,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.pollSocket.on('drain', function (data) {
-            IFC2.log('Poll: Drain: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Poll: Drain: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'drain',
@@ -1178,7 +1170,7 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.pollSocket.on('end', function (data) {
-            IFC2.log('Poll: End: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Poll: End: ${JSON.stringify(data)}`, IFC2.INFO);
             IFC2.eventEmitter.emit('IFC2msg', {
                 type: 'info',
                 code: 'end',
@@ -1188,19 +1180,19 @@ let IFC2 = {
         });
 
         IFC2.infiniteFlight.pollSocket.on('lookup', function (data) {
-            IFC2.log('Poll: Lookup: ' + JSON.stringify(data), IFC2.INFO);
+            IFC2.log(`Poll: Lookup: ${JSON.stringify(data)}`, IFC2.INFO);
         });
     },
 
-    /*****
+    /** ***
      * Process results of data returned from IF
      */
-    processResult: function (command, data) {
-        IFC2.log('Processing result: ' + command + ' > ' + data);
+    processResult(command, data) {
+        IFC2.log(`Processing result: ${command} > ${data}`);
 
         // Save data in ifData data object
         IFC2.ifData[IFC2.infiniteFlight.manifestByCommand[command].name] = {
-            data: data,
+            data,
             ts: Date.now(),
         };
 
@@ -1212,7 +1204,7 @@ let IFC2 = {
                 {
                     command:
                         IFC2.infiniteFlight.manifestByCommand[command].name,
-                    data: data,
+                    data,
                 }
             );
         } else {
@@ -1220,17 +1212,17 @@ let IFC2 = {
 
             IFC2.eventEmitter.emit('IFC2data', {
                 command: IFC2.infiniteFlight.manifestByCommand[command].name,
-                data: data,
+                data,
             }); // Return data to calling script through an event
         }
     },
 
     // SHORTCUTS FUNCTIONS //
 
-    /*****
+    /** ***
      * Initialise module and connection to IF
      */
-    init: function (successCallback, params = {}) {
+    init(successCallback, params = {}) {
         IFC2.log('Initialisting IFC2');
         if (successCallback) IFC2.successCallback = successCallback; // Set success callback function
         if (params.enableLog) IFC2.enableLog = params.enableLog; // Set Logging on/off
@@ -1252,10 +1244,10 @@ let IFC2 = {
         }
     },
 
-    /*****
+    /** ***
      * Use UDP broadcast to find an IF client on the local network
      */
-    searchHost: function () {
+    searchHost() {
         // We only connect to the first device to respond.
         // If you have multiple devices on the network you might not connect to the device you want.
         //
@@ -1273,12 +1265,11 @@ let IFC2 = {
         server.on('message', function (message) {
             IFC2.log('UDP broadcast received', IFC2.INFO);
             IFC2.log(message.toString(), IFC2.INFO);
-            let data = JSON.parse(message.toString());
-            let regex = /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]/;
-            for (key in data.Addresses) {
-                let ip = data.Addresses[key];
-                IFC2.log('Found IF on: ' + ip, IFC2.INFO);
-                if (ip.match(regex)) {
+            const data = JSON.parse(message.toString());
+            const regex = /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]/;
+            for (const ip of data.addresses) {
+                IFC2.log(`Found IF on: ${ip}`, IFC2.INFO);
+                if (ip.match(regex) && ip != '127.0.0.1') {
                     // only match IPv4 addresses for now
                     IFC2.infiniteFlight.serverAddress = ip;
                 }
@@ -1291,21 +1282,18 @@ let IFC2 = {
         // When udp server started and listening.
         server.on('listening', function () {
             // Get and print udp server listening ip address and port number in log console.
-            let address = server.address();
+            const address = server.address();
             IFC2.log(
-                'UDP Server started and listening on ' +
-                    address.address +
-                    ':' +
-                    address.port,
+                `UDP Server started and listening on ${address.address}:${address.port}`,
                 IFC2.INFO
             );
         });
     },
 
-    /*****
+    /** ***
      * Close active connections
      */
-    close: function (callback) {
+    close(callback) {
         // Only close if connected
         if (IFC2.isConnected) {
             // Reset isConnected flag
@@ -1355,8 +1343,8 @@ let IFC2 = {
 
             // Reset manfiest data
             IFC2.infiniteFlight.manifestData = ''; // String to hold raw manifest data
-            (IFC2.infiniteFlight.manifestByName = {}), // Object to hold the manifest organised by command name
-                (IFC2.infiniteFlight.manifestByCommand = {}); // Object to hold the manifest organised by command number
+            IFC2.infiniteFlight.manifestByName = {}; // Object to hold the manifest organised by command name
+            IFC2.infiniteFlight.manifestByCommand = {}; // Object to hold the manifest organised by command number
             IFC2.infiniteFlight.manifestLength = 0; // Manifest length -- zero is initial placeholder
             IFC2.infiniteFlight.manifestBuffer = null; // Placeholder variable for future manifest buffer
 
